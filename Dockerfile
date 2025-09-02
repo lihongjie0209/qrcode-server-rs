@@ -23,8 +23,9 @@ COPY Cargo.toml Cargo.lock ./
 RUN mkdir src && echo "fn main() {}" > src/main.rs
 RUN cargo build --release && rm -rf src
 
-# 复制实际源代码
+# 复制实际源代码和静态文件
 COPY src ./src
+COPY static ./static
 
 # 重新构建应用（只编译源代码变更）
 RUN touch src/main.rs && cargo build --release
