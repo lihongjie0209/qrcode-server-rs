@@ -1,10 +1,6 @@
 # 多阶段构建 - 构建阶段
 FROM debian:bookworm-slim AS builder
 
-# 配置阿里云镜像源
-RUN echo "deb https://mirrors.aliyun.com/debian/ bookworm main" > /etc/apt/sources.list && \
-    echo "deb https://mirrors.aliyun.com/debian/ bookworm-updates main" >> /etc/apt/sources.list && \
-    echo "deb https://mirrors.aliyun.com/debian-security/ bookworm-security main" >> /etc/apt/sources.list
 
 # 安装Rust和构建依赖
 RUN apt-get update && apt-get install -y \
@@ -113,3 +109,4 @@ LABEL org.opencontainers.image.title="QR Code Detection Server" \
 
 # 启动应用
 CMD ["./qrcode-server-rs"]
+
