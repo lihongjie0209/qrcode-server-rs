@@ -1,5 +1,5 @@
 # 多阶段构建 - 构建阶段
-FROM rust:1.89 AS builder
+FROM rust:1.81 AS builder
 
 # 设置环境变量以优化构建
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
@@ -35,11 +35,12 @@ FROM debian:bookworm-slim
 
 # 安装运行时依赖
 RUN apt-get update && apt-get install -y \
-    libopencv-core406 \
-    libopencv-imgproc406 \
-    libopencv-imgcodecs406 \
-    libopencv-objdetect406 \
-    libopencv-dnn406 \
+    libopencv-core-dev \
+    libopencv-imgproc-dev \
+    libopencv-imgcodecs-dev \
+    libopencv-objdetect-dev \
+    libopencv-dnn-dev \
+    libopencv-contrib-dev \
     libssl3 \
     ca-certificates \
     curl \
