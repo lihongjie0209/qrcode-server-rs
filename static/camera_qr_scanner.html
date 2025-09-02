@@ -1,0 +1,1212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>实时摄像头QR码扫描器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #000;
+            min-height: 100vh;
+            color: white;
+            overflow-x: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            text-align: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header h1 {
+            font-size: 1.5em;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+
+        .camera-container {
+            position: relative;
+            width: 100%;
+            height: 70vh;
+            background: #000;
+            overflow: hidden;
+        }
+
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        #canvas {
+            display: none;
+        }
+
+        #overlayCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .camera-placeholder {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #1a1a1a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 5;
+        }
+
+        .placeholder-content {
+            text-align: center;
+            color: #ccc;
+        }
+
+        .camera-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+
+        .placeholder-content h3 {
+            font-size: 1.2em;
+            margin-bottom: 10px;
+            color: #fff;
+        }
+
+        .placeholder-content p {
+            font-size: 0.9em;
+            margin: 5px 0;
+            opacity: 0.8;
+        }
+
+        .camera-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 250px;
+            height: 250px;
+            border: 3px solid #00ff00;
+            border-radius: 20px;
+            background: rgba(0, 255, 0, 0.1);
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .camera-overlay::before {
+            content: '';
+            position: absolute;
+            top: -3px;
+            left: -3px;
+            right: -3px;
+            bottom: -3px;
+            border: 3px solid #00ff00;
+            border-radius: 20px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .camera-overlay::after {
+            content: '📱 将二维码放入框内';
+            position: absolute;
+            bottom: -40px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 15px;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .camera-info {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-family: monospace;
+            z-index: 20;
+            backdrop-filter: blur(10px);
+        }
+
+        .camera-info div {
+            margin-bottom: 5px;
+        }
+
+        .camera-info div:last-child {
+            margin-bottom: 0;
+        }
+
+        .fps-counter { color: #00ff00; font-weight: bold; }
+        .response-time { color: #ffff00; }
+        .detection-time { color: #ff8800; }
+        .qr-detected { color: #00ff00; font-weight: bold; }
+
+        .controls {
+            padding: 20px;
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 15px 25px;
+            border: none;
+            border-radius: 50px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-width: 120px;
+            touch-action: manipulation;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:active {
+            transform: scale(0.98);
+        }
+
+        .btn-secondary {
+            background: #333;
+            color: white;
+            border: 2px solid #555;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn:disabled {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+            opacity: 0.5;
+        }
+
+        .status-bar {
+            background: rgba(0, 0, 0, 0.9);
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            bottom: 0;
+            z-index: 50;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            animation: blink 1s ease-in-out infinite;
+        }
+
+        .qr-count {
+            background: #28a745;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .results-panel {
+            background: #111;
+            max-height: 40vh;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .result-item {
+            background: #222;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-left: 4px solid #28a745;
+        }
+
+        .result-text {
+            color: #fff;
+            font-weight: 600;
+            margin-bottom: 8px;
+            word-break: break-all;
+            font-size: 16px;
+        }
+
+        .result-meta {
+            font-size: 12px;
+            color: #aaa;
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .settings-panel {
+            background: #111;
+            padding: 20px;
+            border-top: 1px solid #333;
+        }
+
+        .setting-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .setting-row:last-child {
+            margin-bottom: 0;
+        }
+
+        input[type="range"] {
+            width: 100px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: #333;
+            border-radius: 5px;
+            height: 5px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+        }
+
+        select {
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid #555;
+            background: #333;
+            color: white;
+            font-size: 14px;
+        }
+
+        .error-message {
+            background: #dc3545;
+            color: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 20px;
+            position: relative;
+        }
+
+        .close-btn {
+            position: absolute;
+            right: 15px;
+            top: 15px;
+            background: none;
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+        }
+
+        .realtime-data {
+            background: #1a1a1a;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        .data-item {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 8px;
+            border-left: 3px solid #28a745;
+        }
+
+        .data-success {
+            background: rgba(40, 167, 69, 0.1);
+            border-left-color: #28a745;
+        }
+
+        .data-fail {
+            background: rgba(220, 53, 69, 0.1);
+            border-left-color: #dc3545;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .fab {
+            position: fixed;
+            bottom: 100px;
+            right: 20px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            font-size: 24px;
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+            z-index: 1000;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .fab:active {
+            transform: scale(0.95);
+        }
+
+        .expandable {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+
+        .expandable.expanded {
+            max-height: 500px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📱 实时QR码扫描器</h1>
+            <p>使用摄像头实时扫描二维码，支持WebSocket高性能处理</p>
+        </div>
+
+        <div class="main-content">
+            <!-- 摄像头区域 -->
+            <div class="camera-section">
+                <h2>📷 摄像头扫描</h2>
+                <div class="camera-container">
+                    <video id="video" autoplay muted playsinline></video>
+                    <canvas id="canvas"></canvas>
+                    <canvas id="overlayCanvas"></canvas>
+                    <div class="camera-placeholder" id="cameraPlaceholder">
+                        <div class="placeholder-content">
+                            <div class="camera-icon">📷</div>
+                            <h3>点击"开始扫描"启动摄像头</h3>
+                            <p>需要授权访问摄像头权限</p>
+                            <p>请确保使用HTTPS或本地环境</p>
+                        </div>
+                    </div>
+                    <div class="camera-info" id="cameraInfo">
+                        <div class="fps-counter">FPS: <span id="realTimeFPS">0</span></div>
+                        <div class="response-time">响应: <span id="realTimeResponse">0</span>ms</div>
+                        <div class="detection-time">检测: <span id="realTimeDetection">0</span>ms</div>
+                        <div class="qr-detected">QR码: <span id="realTimeQRCount">0</span></div>
+                    </div>
+                    <div class="overlay" id="overlay"></div>
+                </div>
+
+                <div class="controls">
+                    <button id="startBtn" class="btn btn-primary">
+                        🎥 开始扫描
+                    </button>
+                    <button id="stopBtn" class="btn btn-secondary" disabled>
+                        ⏹️ 停止扫描
+                    </button>
+                    <button id="switchCameraBtn" class="btn btn-secondary" disabled>
+                        🔄 切换摄像头
+                    </button>
+                </div>
+
+                <div class="settings-panel">
+                    <h3>⚙️ 扫描设置</h3>
+                    <div class="setting-row">
+                        <label>扫描频率:</label>
+                        <div>
+                            <input type="range" id="fpsSlider" min="1" max="30" value="10">
+                            <span id="fpsValue">10</span> FPS
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <label>图片质量:</label>
+                        <select id="qualitySelect">
+                            <option value="0.3">低 (快)</option>
+                            <option value="0.6" selected>中 (平衡)</option>
+                            <option value="0.9">高 (慢)</option>
+                        </select>
+                    </div>
+                    <div class="setting-row">
+                        <label>自动停止:</label>
+                        <select id="autoStopSelect">
+                            <option value="false">否</option>
+                            <option value="true" selected>检测到后停止</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 结果区域 -->
+            <div class="results-section">
+                <h2>📊 扫描结果</h2>
+                
+                <!-- 状态指示器 -->
+                <div id="statusIndicator" class="status-indicator status-disconnected">
+                    <div class="status-dot" style="background: #dc3545;"></div>
+                    <span>WebSocket 未连接</span>
+                </div>
+
+                <!-- 统计信息 -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalScans">0</div>
+                        <div class="stat-label">总扫描次数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="successfulScans">0</div>
+                        <div class="stat-label">成功检测</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="currentFPS">0</div>
+                        <div class="stat-label">当前FPS</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="avgResponseTime">0</div>
+                        <div class="stat-label">平均响应(ms)</div>
+                    </div>
+                </div>
+
+                <!-- 错误信息 -->
+                <div id="errorContainer"></div>
+
+                <!-- QR码结果 -->
+                <div class="qr-results" id="qrResults">
+                    <div style="text-align: center; color: #6c757d; padding: 30px;">
+                        📱 开始扫描查看结果
+                    </div>
+                </div>
+
+                <!-- 实时解码数据 -->
+                <div class="settings-panel">
+                    <h3>📊 实时解码数据</h3>
+                    <div id="realtimeData" style="font-family: monospace; font-size: 12px; max-height: 200px; overflow-y: auto; background: #fff; padding: 10px; border-radius: 5px;">
+                        <div style="color: #6c757d;">等待检测数据...</div>
+                    </div>
+                </div>
+
+                <!-- 操作按钮 -->
+                <div class="controls" style="margin-top: 20px;">
+                    <button id="clearBtn" class="btn btn-secondary">
+                        🗑️ 清空结果
+                    </button>
+                    <button id="exportBtn" class="btn btn-primary">
+                        📥 导出结果
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class QRCameraScanner {
+            constructor() {
+                this.ws = null;
+                this.video = document.getElementById('video');
+                this.canvas = document.getElementById('canvas');
+                this.overlayCanvas = document.getElementById('overlayCanvas');
+                this.cameraPlaceholder = document.getElementById('cameraPlaceholder');
+                this.ctx = this.canvas.getContext('2d');
+                this.overlayCtx = this.overlayCanvas.getContext('2d');
+                this.isScanning = false;
+                this.scanInterval = null;
+                this.currentDeviceId = null;
+                this.devices = [];
+                this.currentDeviceIndex = 0;
+                
+                // FPS 计算
+                this.frameCount = 0;
+                this.lastFPSUpdate = Date.now();
+                this.fpsHistory = [];
+                
+                // 统计数据
+                this.stats = {
+                    totalScans: 0,
+                    successfulScans: 0,
+                    startTime: null,
+                    responseTimes: [],
+                    detectionTimes: []
+                };
+
+                // 扫描结果
+                this.results = [];
+                
+                // 当前检测到的QR码
+                this.currentQRCodes = [];
+
+                this.initializeElements();
+                this.bindEvents();
+                this.connectWebSocket();
+                this.setupOverlayCanvas();
+            }
+
+            initializeElements() {
+                this.startBtn = document.getElementById('startBtn');
+                this.stopBtn = document.getElementById('stopBtn');
+                this.switchCameraBtn = document.getElementById('switchCameraBtn');
+                this.fpsSlider = document.getElementById('fpsSlider');
+                this.fpsValue = document.getElementById('fpsValue');
+                this.qualitySelect = document.getElementById('qualitySelect');
+                this.autoStopSelect = document.getElementById('autoStopSelect');
+                this.statusIndicator = document.getElementById('statusIndicator');
+                this.qrResults = document.getElementById('qrResults');
+                this.clearBtn = document.getElementById('clearBtn');
+                this.exportBtn = document.getElementById('exportBtn');
+                this.errorContainer = document.getElementById('errorContainer');
+                this.realtimeData = document.getElementById('realtimeData');
+                
+                // 实时信息元素
+                this.realTimeFPS = document.getElementById('realTimeFPS');
+                this.realTimeResponse = document.getElementById('realTimeResponse');
+                this.realTimeDetection = document.getElementById('realTimeDetection');
+                this.realTimeQRCount = document.getElementById('realTimeQRCount');
+            }
+
+            setupOverlayCanvas() {
+                // 确保overlay canvas与video尺寸匹配
+                const resizeOverlay = () => {
+                    const rect = this.video.getBoundingClientRect();
+                    this.overlayCanvas.width = this.video.videoWidth || rect.width;
+                    this.overlayCanvas.height = this.video.videoHeight || rect.height;
+                };
+                
+                this.video.addEventListener('loadedmetadata', resizeOverlay);
+                window.addEventListener('resize', resizeOverlay);
+            }
+
+            bindEvents() {
+                this.startBtn.addEventListener('click', () => this.startScanning());
+                this.stopBtn.addEventListener('click', () => this.stopScanning());
+                this.switchCameraBtn.addEventListener('click', () => this.switchCamera());
+                this.clearBtn.addEventListener('click', () => this.clearResults());
+                this.exportBtn.addEventListener('click', () => this.exportResults());
+                
+                this.fpsSlider.addEventListener('input', (e) => {
+                    this.fpsValue.textContent = e.target.value;
+                    if (this.isScanning) {
+                        this.updateScanInterval();
+                    }
+                });
+            }
+
+            connectWebSocket() {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${protocol}//${window.location.host}${window.location.pathname.replace('/camera', '')}/ws`;
+                
+                this.ws = new WebSocket(wsUrl);
+
+                this.ws.onopen = () => {
+                    this.updateStatus('connected', 'WebSocket 已连接');
+                    console.log('WebSocket connected');
+                };
+
+                this.ws.onmessage = (event) => {
+                    this.handleWebSocketMessage(JSON.parse(event.data));
+                };
+
+                this.ws.onclose = () => {
+                    this.updateStatus('disconnected', 'WebSocket 连接断开');
+                    setTimeout(() => this.connectWebSocket(), 3000);
+                };
+
+                this.ws.onerror = (error) => {
+                    this.showError('WebSocket 连接错误: ' + error.message);
+                };
+            }
+
+            updateStatus(status, message) {
+                const indicator = this.statusIndicator;
+                const dot = indicator.querySelector('.status-dot');
+                const span = indicator.querySelector('span');
+
+                indicator.className = `status-indicator status-${status}`;
+                span.textContent = message;
+
+                switch(status) {
+                    case 'connected':
+                        dot.style.background = '#28a745';
+                        break;
+                    case 'scanning':
+                        dot.style.background = '#ffc107';
+                        break;
+                    case 'disconnected':
+                        dot.style.background = '#dc3545';
+                        break;
+                }
+            }
+
+            async getCameraDevices() {
+                try {
+                    const devices = await navigator.mediaDevices.enumerateDevices();
+                    this.devices = devices.filter(device => device.kind === 'videoinput');
+                    console.log('Found cameras:', this.devices.length);
+                    return this.devices;
+                } catch (error) {
+                    this.showError('无法获取摄像头设备: ' + error.message);
+                    return [];
+                }
+            }
+
+            async startCamera() {
+                try {
+                    // 检查浏览器支持
+                    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                        throw new Error('浏览器不支持摄像头访问，请使用现代浏览器');
+                    }
+
+                    // 检查是否为HTTPS或localhost
+                    if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+                        this.showError('警告: 非HTTPS环境可能无法访问摄像头，建议使用HTTPS');
+                    }
+
+                    await this.getCameraDevices();
+                    
+                    if (this.devices.length === 0) {
+                        throw new Error('未找到摄像头设备，请检查设备连接和权限');
+                    }
+
+                    const deviceId = this.devices[this.currentDeviceIndex]?.deviceId;
+                    
+                    const constraints = {
+                        video: {
+                            deviceId: deviceId ? { exact: deviceId } : undefined,
+                            width: { ideal: 1280, min: 640 },
+                            height: { ideal: 720, min: 480 },
+                            facingMode: deviceId ? undefined : 'environment'
+                        }
+                    };
+
+                    console.log('请求摄像头权限...', constraints);
+                    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                    this.video.srcObject = stream;
+                    
+                    await new Promise((resolve) => {
+                        this.video.onloadedmetadata = () => {
+                            console.log('摄像头视频流已加载');
+                            // 隐藏占位符
+                            if (this.cameraPlaceholder) {
+                                this.cameraPlaceholder.style.display = 'none';
+                            }
+                            resolve();
+                        };
+                    });
+
+                    console.log('摄像头启动成功');
+                    this.switchCameraBtn.disabled = this.devices.length <= 1;
+                    
+                    return true;
+                } catch (error) {
+                    console.error('摄像头启动失败:', error);
+                    let errorMessage = '摄像头启动失败: ' + error.message;
+                    
+                    if (error.name === 'NotAllowedError') {
+                        errorMessage = '摄像头权限被拒绝，请允许访问摄像头并刷新页面';
+                    } else if (error.name === 'NotFoundError') {
+                        errorMessage = '未找到摄像头设备，请检查设备连接';
+                    } else if (error.name === 'NotSupportedError') {
+                        errorMessage = '浏览器不支持摄像头访问';
+                    } else if (error.name === 'NotReadableError') {
+                        errorMessage = '摄像头被其他应用占用，请关闭其他应用后重试';
+                    }
+                    
+                    this.showError(errorMessage);
+                    return false;
+                }
+            }
+
+            stopCamera() {
+                if (this.video.srcObject) {
+                    const tracks = this.video.srcObject.getTracks();
+                    tracks.forEach(track => track.stop());
+                    this.video.srcObject = null;
+                }
+                // 显示占位符
+                if (this.cameraPlaceholder) {
+                    this.cameraPlaceholder.style.display = 'flex';
+                }
+            }
+
+            async switchCamera() {
+                this.currentDeviceIndex = (this.currentDeviceIndex + 1) % this.devices.length;
+                this.stopCamera();
+                await this.startCamera();
+            }
+
+            async startScanning() {
+                if (!await this.startCamera()) {
+                    return;
+                }
+
+                this.isScanning = true;
+                this.stats.startTime = Date.now();
+                
+                this.startBtn.disabled = true;
+                this.stopBtn.disabled = false;
+                this.switchCameraBtn.disabled = this.devices.length <= 1;
+                
+                this.updateStatus('scanning', '正在扫描...');
+                this.updateScanInterval();
+            }
+
+            stopScanning() {
+                this.isScanning = false;
+                
+                if (this.scanInterval) {
+                    clearInterval(this.scanInterval);
+                    this.scanInterval = null;
+                }
+
+                this.stopCamera();
+                
+                this.startBtn.disabled = false;
+                this.stopBtn.disabled = true;
+                this.switchCameraBtn.disabled = true;
+                
+                this.updateStatus('connected', 'WebSocket 已连接');
+            }
+
+            updateScanInterval() {
+                if (this.scanInterval) {
+                    clearInterval(this.scanInterval);
+                }
+
+                const fps = parseInt(this.fpsSlider.value);
+                const interval = 1000 / fps;
+                
+                this.scanInterval = setInterval(() => {
+                    if (this.isScanning && this.ws && this.ws.readyState === WebSocket.OPEN) {
+                        this.captureAndSend();
+                    }
+                }, interval);
+            }
+
+            captureAndSend() {
+                if (!this.video.videoWidth || !this.video.videoHeight) {
+                    return;
+                }
+
+                this.canvas.width = this.video.videoWidth;
+                this.canvas.height = this.video.videoHeight;
+                
+                this.ctx.drawImage(this.video, 0, 0);
+                
+                const quality = parseFloat(this.qualitySelect.value);
+                const dataURL = this.canvas.toDataURL('image/jpeg', quality);
+                const base64 = dataURL.split(',')[1];
+
+                const message = {
+                    type: 'detect',
+                    image: base64,
+                    timestamp: Date.now()
+                };
+
+                this.ws.send(JSON.stringify(message));
+                this.stats.totalScans++;
+                
+                // 更新FPS计算
+                this.frameCount++;
+                this.updateRealTimeFPS();
+                
+                this.updateStats();
+            }
+
+            updateRealTimeFPS() {
+                const now = Date.now();
+                if (now - this.lastFPSUpdate >= 1000) {
+                    const fps = this.frameCount / ((now - this.lastFPSUpdate) / 1000);
+                    this.fpsHistory.push(fps);
+                    if (this.fpsHistory.length > 10) {
+                        this.fpsHistory.shift();
+                    }
+                    
+                    const avgFPS = this.fpsHistory.reduce((a, b) => a + b, 0) / this.fpsHistory.length;
+                    this.realTimeFPS.textContent = avgFPS.toFixed(1);
+                    
+                    this.frameCount = 0;
+                    this.lastFPSUpdate = now;
+                }
+            }
+
+            handleWebSocketMessage(data) {
+                const responseTime = Date.now() - (data.timestamp || Date.now());
+                this.stats.responseTimes.push(responseTime);
+                
+                // 更新实时响应时间
+                this.realTimeResponse.textContent = responseTime;
+                
+                // 更新检测时间
+                if (data.statistics && data.statistics.detection_time_ms) {
+                    this.stats.detectionTimes.push(data.statistics.detection_time_ms);
+                    this.realTimeDetection.textContent = data.statistics.detection_time_ms.toFixed(1);
+                }
+                
+                // 更新QR码数量
+                const qrCount = data.success ? (data.count || 0) : 0;
+                this.realTimeQRCount.textContent = qrCount;
+                
+                // 显示实时解码数据
+                this.updateRealtimeData(data);
+                
+                if (data.success && data.count > 0) {
+                    this.stats.successfulScans++;
+                    this.currentQRCodes = data.qrcodes;
+                    
+                    // 绘制QR码框
+                    this.drawQRCodeBoxes(data.qrcodes);
+                    
+                    data.qrcodes.forEach(qr => {
+                        this.addResult({
+                            text: qr.text,
+                            timestamp: new Date().toLocaleString(),
+                            responseTime: responseTime,
+                            statistics: data.statistics,
+                            points: qr.points,
+                            bbox: qr.bbox
+                        });
+                    });
+
+                    // 自动停止功能
+                    if (this.autoStopSelect.value === 'true') {
+                        this.stopScanning();
+                    }
+                } else {
+                    this.currentQRCodes = [];
+                    this.clearQRCodeBoxes();
+                }
+
+                this.updateStats();
+            }
+
+            drawQRCodeBoxes(qrcodes) {
+                if (!this.overlayCanvas || !this.video.videoWidth) return;
+                
+                // 确保overlay canvas尺寸正确
+                this.overlayCanvas.width = this.video.videoWidth;
+                this.overlayCanvas.height = this.video.videoHeight;
+                
+                // 清除之前的绘制
+                this.overlayCtx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
+                
+                // 计算缩放比例
+                const videoRect = this.video.getBoundingClientRect();
+                const scaleX = this.overlayCanvas.width / this.video.videoWidth;
+                const scaleY = this.overlayCanvas.height / this.video.videoHeight;
+                
+                qrcodes.forEach((qr, index) => {
+                    if (qr.points && qr.points.length === 4) {
+                        // 绘制QR码轮廓
+                        this.overlayCtx.strokeStyle = '#00ff00';
+                        this.overlayCtx.lineWidth = 3;
+                        this.overlayCtx.setLineDash([]);
+                        
+                        this.overlayCtx.beginPath();
+                        qr.points.forEach((point, i) => {
+                            const x = point[0] * scaleX;
+                            const y = point[1] * scaleY;
+                            if (i === 0) {
+                                this.overlayCtx.moveTo(x, y);
+                            } else {
+                                this.overlayCtx.lineTo(x, y);
+                            }
+                        });
+                        this.overlayCtx.closePath();
+                        this.overlayCtx.stroke();
+                        
+                        // 绘制边界框
+                        if (qr.bbox) {
+                            this.overlayCtx.strokeStyle = '#ff4444';
+                            this.overlayCtx.lineWidth = 2;
+                            this.overlayCtx.setLineDash([5, 5]);
+                            this.overlayCtx.strokeRect(
+                                qr.bbox.x * scaleX,
+                                qr.bbox.y * scaleY,
+                                qr.bbox.width * scaleX,
+                                qr.bbox.height * scaleY
+                            );
+                        }
+                        
+                        // 绘制文本内容（截断显示）
+                        const displayText = qr.text.length > 20 ? qr.text.substring(0, 20) + '...' : qr.text;
+                        this.overlayCtx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+                        this.overlayCtx.fillRect(
+                            qr.points[0][0] * scaleX,
+                            qr.points[0][1] * scaleY - 25,
+                            Math.min(displayText.length * 8, 200),
+                            20
+                        );
+                        
+                        this.overlayCtx.fillStyle = '#00ff00';
+                        this.overlayCtx.font = '12px monospace';
+                        this.overlayCtx.fillText(
+                            displayText,
+                            qr.points[0][0] * scaleX + 2,
+                            qr.points[0][1] * scaleY - 8
+                        );
+                    }
+                });
+            }
+
+            clearQRCodeBoxes() {
+                if (this.overlayCtx) {
+                    this.overlayCtx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
+                }
+            }
+
+            updateRealtimeData(data) {
+                const timestamp = new Date().toLocaleTimeString();
+                const dataDiv = document.createElement('div');
+                dataDiv.style.marginBottom = '5px';
+                dataDiv.style.padding = '5px';
+                dataDiv.style.borderLeft = '3px solid ' + (data.success ? '#28a745' : '#dc3545');
+                dataDiv.style.backgroundColor = data.success ? '#f8fff8' : '#fff8f8';
+                
+                let content = `<strong>[${timestamp}]</strong> `;
+                if (data.success && data.count > 0) {
+                    content += `✅ 检测到 ${data.count} 个QR码<br>`;
+                    data.qrcodes.forEach((qr, i) => {
+                        const preview = qr.text.length > 50 ? qr.text.substring(0, 50) + '...' : qr.text;
+                        content += `&nbsp;&nbsp;${i+1}. ${this.escapeHtml(preview)}<br>`;
+                    });
+                } else {
+                    content += `❌ 未检测到QR码<br>`;
+                }
+                
+                if (data.statistics) {
+                    const stats = data.statistics;
+                    content += `&nbsp;&nbsp;📊 解码:${stats.image_decode_time_ms?.toFixed(1)}ms | `;
+                    content += `检测:${stats.detection_time_ms?.toFixed(1)}ms | `;
+                    content += `总计:${stats.total_time_ms?.toFixed(1)}ms`;
+                    if (stats.pool_acquisition_time_ms !== undefined) {
+                        content += ` | 池获取:${stats.pool_acquisition_time_ms?.toFixed(1)}ms`;
+                    }
+                }
+                
+                dataDiv.innerHTML = content;
+                
+                this.realtimeData.insertBefore(dataDiv, this.realtimeData.firstChild);
+                
+                // 保持最多20条记录
+                while (this.realtimeData.children.length > 20) {
+                    this.realtimeData.removeChild(this.realtimeData.lastChild);
+                }
+                
+                // 滚动到顶部显示最新数据
+                this.realtimeData.scrollTop = 0;
+            }
+
+            addResult(result) {
+                this.results.unshift(result);
+                
+                // 保持最多50个结果
+                if (this.results.length > 50) {
+                    this.results = this.results.slice(0, 50);
+                }
+
+                this.renderResults();
+            }
+
+            renderResults() {
+                if (this.results.length === 0) {
+                    this.qrResults.innerHTML = `
+                        <div style="text-align: center; color: #6c757d; padding: 30px;">
+                            📱 开始扫描查看结果
+                        </div>
+                    `;
+                    return;
+                }
+
+                this.qrResults.innerHTML = this.results.map(result => `
+                    <div class="qr-result">
+                        <div class="qr-text">${this.escapeHtml(result.text)}</div>
+                        <div class="qr-meta">
+                            <span>📅 ${result.timestamp}</span>
+                            <span>⚡ ${result.responseTime}ms</span>
+                            <span>📊 ${result.statistics?.detection_time_ms?.toFixed(1)}ms</span>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            updateStats() {
+                document.getElementById('totalScans').textContent = this.stats.totalScans;
+                document.getElementById('successfulScans').textContent = this.stats.successfulScans;
+                
+                // 计算当前FPS
+                const now = Date.now();
+                if (this.stats.startTime) {
+                    const elapsed = (now - this.stats.startTime) / 1000;
+                    const currentFPS = elapsed > 0 ? (this.stats.totalScans / elapsed).toFixed(1) : 0;
+                    document.getElementById('currentFPS').textContent = currentFPS;
+                }
+
+                // 计算平均响应时间
+                if (this.stats.responseTimes.length > 0) {
+                    const avg = this.stats.responseTimes.reduce((a, b) => a + b, 0) / this.stats.responseTimes.length;
+                    document.getElementById('avgResponseTime').textContent = Math.round(avg);
+                }
+            }
+
+            clearResults() {
+                this.results = [];
+                this.stats = {
+                    totalScans: 0,
+                    successfulScans: 0,
+                    startTime: null,
+                    responseTimes: [],
+                    detectionTimes: []
+                };
+                this.frameCount = 0;
+                this.fpsHistory = [];
+                this.lastFPSUpdate = Date.now();
+                
+                // 清空实时显示
+                this.realTimeFPS.textContent = '0';
+                this.realTimeResponse.textContent = '0';
+                this.realTimeDetection.textContent = '0';
+                this.realTimeQRCount.textContent = '0';
+                
+                // 清空实时数据
+                this.realtimeData.innerHTML = '<div style="color: #6c757d;">等待检测数据...</div>';
+                
+                this.renderResults();
+                this.updateStats();
+                this.clearQRCodeBoxes();
+            }
+
+            stopScanning() {
+                this.isScanning = false;
+                
+                if (this.scanInterval) {
+                    clearInterval(this.scanInterval);
+                    this.scanInterval = null;
+                }
+
+                this.stopCamera();
+                
+                this.startBtn.disabled = false;
+                this.stopBtn.disabled = true;
+                this.switchCameraBtn.disabled = true;
+                
+                this.updateStatus('connected', 'WebSocket 已连接');
+                
+                // 清除QR码框
+                this.clearQRCodeBoxes();
+                
+                // 重置实时FPS显示
+                this.realTimeFPS.textContent = '0';
+            }
+
+            exportResults() {
+                if (this.results.length === 0) {
+                    this.showError('没有结果可导出');
+                    return;
+                }
+
+                const data = {
+                    exportTime: new Date().toISOString(),
+                    stats: this.stats,
+                    results: this.results
+                };
+
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `qr_scan_results_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+
+            showError(message) {
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'error-message';
+                errorDiv.innerHTML = `
+                    <strong>❌ 错误:</strong> ${this.escapeHtml(message)}
+                    <button onclick="this.parentElement.remove()" style="float: right; background: none; border: none; font-size: 18px; cursor: pointer;">×</button>
+                `;
+                
+                this.errorContainer.appendChild(errorDiv);
+                
+                // 5秒后自动移除
+                setTimeout(() => {
+                    if (errorDiv.parentElement) {
+                        errorDiv.remove();
+                    }
+                }, 5000);
+            }
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+        }
+
+        // 初始化扫描器
+        document.addEventListener('DOMContentLoaded', () => {
+            new QRCameraScanner();
+        });
+    </script>
+</body>
+</html>

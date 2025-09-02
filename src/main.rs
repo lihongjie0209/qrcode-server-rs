@@ -351,6 +351,10 @@ async fn serve_frontend() -> Html<&'static str> {
     Html(include_str!("../static/index.html"))
 }
 
+async fn serve_camera_scanner() -> Html<&'static str> {
+    Html(include_str!("../static/camera_qr_scanner.html"))
+}
+
 async fn serve_static_files() -> Result<Response, StatusCode> {
     // 这里可以扩展为完整的静态文件服务
     // 目前只返回404，因为我们的前端是单页面应用
@@ -941,6 +945,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // 默认根路径
         Router::new()
             .route("/", get(serve_frontend))
+            .route("/camera", get(serve_camera_scanner))
             .route("/ws", get(websocket_handler))
             .route("/health", get(health_check))
             .route("/detect/file", post(detect_from_file))
@@ -950,6 +955,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let context_clone = context_path.clone();
         Router::new()
             .route(&format!("{}/", context_path), get(serve_frontend))
+            .route(&format!("{}/camera", context_path), get(serve_camera_scanner))
             .route(&format!("{}/ws", context_path), get(websocket_handler))
             .route(&format!("{}/health", context_path), get(health_check))
             .route(&format!("{}/detect/file", context_path), post(detect_from_file))
