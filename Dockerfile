@@ -1,5 +1,5 @@
 # 多阶段构建 - 构建阶段
-FROM rust:1.75 as builder
+FROM rust:1.89 AS builder
 
 # 设置环境变量以优化构建
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
