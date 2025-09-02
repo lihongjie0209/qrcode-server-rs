@@ -1,6 +1,7 @@
 # Rust build artifacts
 target/
-Cargo.lock
+# Note: Cargo.lock should NOT be ignored for binary projects
+# Cargo.lock
 
 # IDE files
 .vscode/
@@ -15,7 +16,6 @@ Thumbs.db
 
 # Git
 .git/
-.gitignore
 
 # Logs
 *.log
@@ -24,18 +24,6 @@ logs/
 # Temporary files
 tmp/
 temp/
-
-# Docker files
-Dockerfile*
-.dockerignore
-
-# Documentation
-*.md
-docs/
-
-# CI/CD
-.github/
-.gitlab-ci.yml
 
 # Environment files
 .env
@@ -46,10 +34,14 @@ docs/
 .cache/
 node_modules/
 
-# Test artifacts
+# Test artifacts (but keep test directory for potential runtime needs)
 test_*.png
 coverage/
 
 # Backup files
 *.bak
 *.backup
+
+# GCP sensitive files (stored in temp directory)
+scripts/gcp-config.yaml
+scripts/gcp-service-account-key.json
