@@ -1,18 +1,37 @@
 # 多阶段构建 - 构建阶段
-FROM rust:1.89 AS builder
+FROM debian:bookworm-slim AS builder
 
-# 设置环境变量以优化构建
-ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
+# 配置阿里云镜像源
+RUN echo "deb https://mirrors.aliyun.com/debian/ bookworm main" > /etc/apt/sources.list && \
+    echo "deb https://mirrors.aliyun.com/debian/ bookworm-updates main" >> /etc/apt/sources.list && \
+    echo "deb https://mirrors.aliyun.com/debian-security/ bookworm-security main" >> /etc/apt/sources.list
 
-# 安装OpenCV和构建依赖
+# 安装Rust和构建依赖
 RUN apt-get update && apt-get install -y \
+    libopencv-core406 \
+    libopencv-imgproc406 \
+    libopencv-imgcodecs406 \
+    libopencv-objdetect406 \
+    libopencv-dnn406 \
+    libopencv-contrib406 \
+    libssl3 \
+    curl \
+    build-essential \
     libopencv-dev \
     clang \
     libclang-dev \
     pkg-config \
     libssl-dev \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
+
+# 安装Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# 设置环境变量以优化构建
+ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
 
 WORKDIR /app
 
@@ -33,14 +52,15 @@ RUN touch src/main.rs && cargo build --release
 # 运行时镜像
 FROM debian:bookworm-slim
 
-# 安装运行时依赖
-RUN apt-get update && apt-get install -y \
-    libopencv-core-dev \
-    libopencv-imgproc-dev \
-    libopencv-imgcodecs-dev \
-    libopencv-objdetect-dev \
-    libopencv-dnn-dev \
-    libopencv-contrib-dev \
+
+# 安装运行时依赖（使用运行时库，不是dev包）
+RUN apt-get update && apt search libopencv  && apt-get install -y \
+    libopencv-core406 \
+    libopencv-imgproc406 \
+    libopencv-imgcodecs406 \
+    libopencv-objdetect406 \
+    libopencv-dnn406 \
+    libopencv-contrib406 \
     libssl3 \
     ca-certificates \
     curl \
