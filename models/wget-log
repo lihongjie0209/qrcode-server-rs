@@ -1,0 +1,28 @@
+--2025-09-02 14:54:59--  https://github.com/WeChatCV/opencv_3rdparty/raw/wechat_qrcode/detect.prototxt
+Resolving github.com (github.com)... 20.205.243.166
+Connecting to github.com (github.com)|20.205.243.166|:443... connected.
+HTTP request sent, awaiting response... Read error (The TLS connection was non-properly terminated.) in headers.
+Retrying.
+
+--2025-09-02 14:56:30--  (try: 2)  https://github.com/WeChatCV/opencv_3rdparty/raw/wechat_qrcode/detect.prototxt
+Connecting to github.com (github.com)|20.205.243.166|:443... connected.
+HTTP request sent, awaiting response... Read error (The TLS connection was non-properly terminated.) in headers.
+Retrying.
+
+--2025-09-02 14:58:02--  (try: 3)  https://github.com/WeChatCV/opencv_3rdparty/raw/wechat_qrcode/detect.prototxt
+Connecting to github.com (github.com)|20.205.243.166|:443... failed: Connection timed out.
+Resolving github.com (github.com)... 20.205.243.166
+Connecting to github.com (github.com)|20.205.243.166|:443... connected.
+HTTP request sent, awaiting response... 302 Found
+Location: https://raw.githubusercontent.com/WeChatCV/opencv_3rdparty/wechat_qrcode/detect.prototxt [following]
+--2025-09-02 15:00:14--  https://raw.githubusercontent.com/WeChatCV/opencv_3rdparty/wechat_qrcode/detect.prototxt
+Resolving raw.githubusercontent.com (raw.githubusercontent.com)... 185.199.108.133, 185.199.110.133, 185.199.111.133, ...
+Connecting to raw.githubusercontent.com (raw.githubusercontent.com)|185.199.108.133|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 42656 (42K) [text/plain]
+Saving to: ‘detect.prototxt.1’
+
+     0K .......... .......... .......... .......... .         100% 7.15K=5.8s
+
+2025-09-02 15:00:27 (7.15 KB/s) - ‘detect.prototxt.1’ saved [42656/42656]
+
