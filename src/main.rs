@@ -101,20 +101,38 @@ impl QRCodeDetector {
         let super_resolution_prototxt = "models/sr.prototxt";
         let super_resolution_caffemodel = "models/sr.caffemodel";
         
+        debug!("Initializing WeChat QRCode detector with model files:");
+        debug!("  detector_prototxt: {}", detector_prototxt);
+        debug!("  detector_caffemodel: {}", detector_caffemodel);
+        debug!("  super_resolution_prototxt: {}", super_resolution_prototxt);
+        debug!("  super_resolution_caffemodel: {}", super_resolution_caffemodel);
+        
         let detector = WeChatQRCode::new(
             detector_prototxt,
             detector_caffemodel,
             super_resolution_prototxt,
             super_resolution_caffemodel,
-        )?;
+        ).map_err(|e| {
+            error!("Failed to initialize WeChat QRCode detector: {}", e);
+            error!("This usually indicates missing OpenCV WeChat QR code module or model files");
+            e
+        })?;
 
+        info!("WeChat QRCode detector initialized successfully");
         Ok(Self { detector })
     }
 
     fn detect_qr_codes(&mut self, image: &Mat) -> Result<Vec<QRCodeResult>, Box<dyn std::error::Error>> {
         let mut points = Vector::<Mat>::new();
         
-        let decoded_info = self.detector.detect_and_decode(image, &mut points)?;
+        debug!("Starting QR code detection on image ({}x{})", 
+               image.cols(), image.rows());
+        
+        let decoded_info = self.detector.detect_and_decode(image, &mut points).map_err(|e| {
+            error!("WeChat QRCode detect_and_decode failed: {}", e);
+            error!("Image size: {}x{}, channels: {}", image.cols(), image.rows(), image.channels());
+            e
+        })?;
         
         if decoded_info.is_empty() {
             return Ok(vec![]);
@@ -261,10 +279,17 @@ fn get_detector_pool() -> &'static DetectorPool {
             
             let pool = Pool::new(initial_size, || {
                 match QRCodeDetector::new() {
-                    Ok(detector) => detector,
+                    Ok(detector) => {
+                        debug!("Successfully created QRCode detector instance");
+                        detector
+                    },
                     Err(e) => {
                         error!("Failed to create QRCode detector: {}", e);
-                        panic!("Cannot create QRCode detector");
+                        error!("Common causes:");
+                        error!("  1. Missing OpenCV WeChat QR code module (libopencv_wechat_qrcode)");
+                        error!("  2. Missing or corrupted model files in models/ directory");
+                        error!("  3. Incompatible OpenCV version between build and runtime");
+                        panic!("Cannot create QRCode detector - check logs above");
                     }
                 }
             });

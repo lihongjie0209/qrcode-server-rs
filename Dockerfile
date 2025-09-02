@@ -90,8 +90,9 @@ USER qrcode
 # 暴露端口
 EXPOSE 3000
 
-# 设置环境变量
-ENV RUST_LOG=info
+# 设置环境变量（启用详细日志）
+ENV RUST_LOG=debug
+ENV RUST_BACKTRACE=1
 ENV PORT=3000
 ENV CONTEXT_PATH=/
 ENV POOL_INITIAL_SIZE=10
@@ -107,6 +108,6 @@ LABEL org.opencontainers.image.title="QR Code Detection Server" \
       org.opencontainers.image.version="1.0.0" \
       org.opencontainers.image.authors="QR Code Server Team"
 
-# 启动应用
+# 启动应用（添加详细输出）
 CMD ["./qrcode-server-rs"]
 
