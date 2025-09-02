@@ -1,1 +1,10 @@
 /target
+
+
+
+scripts/gcp-config.yaml
+scripts/gcp-service-account-key.json
+
+__pycache__/
+*.pyc
+.venv

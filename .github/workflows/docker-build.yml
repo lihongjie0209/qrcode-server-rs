@@ -1,0 +1,245 @@
+name: Docker Build and Push
+
+on:
+  # 通过tag触发，格式为 v*
+  push:
+    tags:
+      - 'v*'
+  
+  # 支持手动触发
+  workflow_dispatch:
+    inputs:
+      push_to_dockerhub:
+        description: '是否推送到DockerHub'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      custom_tag:
+        description: '自定义标签（可选）'
+        required: false
+        type: string
+
+env:
+  DOCKERHUB_NAMESPACE: lihongjie0209
+  IMAGE_NAME: qrcode-server-rs
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout代码
+      uses: actions/checkout@v4
+      
+    - name: 设置Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: 登录DockerHub
+      if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.push_to_dockerhub == 'true'
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+    
+    - name: 提取元数据
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_NAME }}
+        tags: |
+          # Tag触发: v1.0.0 -> 1.0.0, latest
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          # 主分支: main -> main
+          type=ref,event=branch
+          # PR: pr-123
+          type=ref,event=pr
+          # 手动触发自定义标签
+          type=raw,value={{inputs.custom_tag}},enable=${{ github.event.inputs.custom_tag != '' }}
+          # latest标签仅对tag和main分支
+          type=raw,value=latest,enable={{is_default_branch}}
+          type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+        labels: |
+          org.opencontainers.image.title=QR码检测服务
+          org.opencontainers.image.description=基于Rust和OpenCV的高性能QR码检测API服务，支持图像中QR码的识别和解析
+          org.opencontainers.image.vendor=lihongjie0209
+          org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          org.opencontainers.image.documentation=https://github.com/${{ github.repository }}/blob/main/README.md
+    
+    - name: 构建和推送Docker镜像
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        platforms: linux/amd64
+        push: ${{ startsWith(github.ref, 'refs/tags/v') || github.event.inputs.push_to_dockerhub == 'true' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          BUILDTIME=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+          VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
+          REVISION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.revision'] }}
+    
+    - name: 构建摘要
+      run: |
+        echo "## 🐳 Docker构建结果" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| 项目 | 值 |" >> $GITHUB_STEP_SUMMARY
+        echo "|------|-----|" >> $GITHUB_STEP_SUMMARY
+        echo "| 🏷️ 触发方式 | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| 📦 镜像名称 | \`${{ env.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_NAME }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| 🏗️ 构建平台 | linux/amd64 |" >> $GITHUB_STEP_SUMMARY
+        if [[ "${{ startsWith(github.ref, 'refs/tags/v') || github.event.inputs.push_to_dockerhub == 'true' }}" == "true" ]]; then
+          echo "| 🚀 推送状态 | ✅ 已推送到DockerHub |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| 🚀 推送状态 | ⏸️ 仅构建，未推送 |" >> $GITHUB_STEP_SUMMARY
+        fi
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🏷️ 生成的标签:" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        echo '${{ steps.meta.outputs.tags }}' | sed 's/,/\n/g' >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+    
+    - name: 安全扫描
+      if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.push_to_dockerhub == 'true'
+      uses: docker/scout-action@v1
+      with:
+        command: cves
+        image: ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+        only-severities: critical,high
+        exit-code: false # 不因安全问题阻止发布
+
+  test-image:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.push_to_dockerhub == 'true'
+    
+    steps:
+    - name: 提取元数据
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=semver,pattern={{version}}
+          type=ref,event=branch
+          type=raw,value={{inputs.custom_tag}},enable=${{ github.event.inputs.custom_tag != '' }}
+    
+
+
+  release-notification:
+    needs: [build-and-push, test-image]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') && success()
+    
+    steps:
+    - name: 发布通知
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/}
+        echo "## 🎉 新版本发布成功!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📦 镜像信息" >> $GITHUB_STEP_SUMMARY
+        echo "- **版本**: \`$VERSION\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **镜像**: \`${{ env.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_NAME }}:${VERSION#v}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **平台**: linux/amd64" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🚀 使用方式" >> $GITHUB_STEP_SUMMARY
+        echo '```bash' >> $GITHUB_STEP_SUMMARY
+        echo "# 拉取最新版本" >> $GITHUB_STEP_SUMMARY
+        echo "docker pull ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_NAME }}:${VERSION#v}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "# 运行容器" >> $GITHUB_STEP_SUMMARY
+        echo "docker run -d -p 3000:3000 \\" >> $GITHUB_STEP_SUMMARY
+        echo "  ${{ env.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_NAME }}:${VERSION#v}" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+
+  deploy-cloud-run:
+    needs: [build-and-push, test-image]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') && success()
+    
+    steps:
+    - name: Checkout代码
+      uses: actions/checkout@v4
+    
+    - name: 配置GCP身份验证
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+    
+    - name: 设置Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+      
+    - name: 提取版本号
+      id: version
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/v}
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "image_uri=${{ env.DOCKERHUB_NAMESPACE }}/${{ env.IMAGE_NAME }}:$VERSION" >> $GITHUB_OUTPUT
+    
+    - name: 部署到Cloud Run
+      run: |
+        echo "🚀 开始部署到GCP Cloud Run..."
+        
+        # 部署到Cloud Run
+        gcloud run deploy ${{ vars.CLOUD_RUN_SERVICE_NAME || 'qrcode-server-rs' }} \
+          --image=${{ steps.version.outputs.image_uri }} \
+          --platform=managed \
+          --region=${{ vars.GCP_REGION || 'asia-east2' }} \
+          --allow-unauthenticated \
+          --port=3000 \
+          --memory=${{ vars.CLOUD_RUN_MEMORY || '1Gi' }} \
+          --cpu=${{ vars.CLOUD_RUN_CPU || '1' }} \
+          --concurrency=${{ vars.CLOUD_RUN_CONCURRENCY || '80' }} \
+          --max-instances=${{ vars.CLOUD_RUN_MAX_INSTANCES || '10' }} \
+          --min-instances=${{ vars.CLOUD_RUN_MIN_INSTANCES || '0' }} \
+          --timeout=${{ vars.CLOUD_RUN_TIMEOUT || '300' }} \
+          --set-env-vars="RUST_LOG=${{ vars.RUST_LOG || 'info' }}" \
+          --quiet
+        
+        echo "✅ Cloud Run部署完成"
+    
+    - name: 获取服务URL
+      id: service-url
+      run: |
+        SERVICE_URL=$(gcloud run services describe ${{ vars.CLOUD_RUN_SERVICE_NAME || 'qrcode-server-rs' }} \
+          --region=${{ vars.GCP_REGION || 'asia-east2' }} \
+          --format='value(status.url)')
+        echo "url=$SERVICE_URL" >> $GITHUB_OUTPUT
+        echo "🌐 服务URL: $SERVICE_URL"
+    
+
+    
+    - name: 部署总结
+      run: |
+        VERSION=${{ steps.version.outputs.version }}
+        SERVICE_URL="${{ steps.service-url.outputs.url }}"
+        
+        echo "## 🌐 Cloud Run部署成功!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📋 部署信息" >> $GITHUB_STEP_SUMMARY
+        echo "- **版本**: \`v$VERSION\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **镜像**: \`${{ steps.version.outputs.image_uri }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **服务名**: \`${{ vars.CLOUD_RUN_SERVICE_NAME || 'qrcode-server-rs' }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **区域**: \`${{ vars.GCP_REGION || 'asia-east2' }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **服务URL**: [$SERVICE_URL]($SERVICE_URL)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🔗 快速访问" >> $GITHUB_STEP_SUMMARY
+        echo "- [🌐 Web界面]($SERVICE_URL)" >> $GITHUB_STEP_SUMMARY
+        echo "- [📚 API测试]($SERVICE_URL)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🧪 测试命令" >> $GITHUB_STEP_SUMMARY
+        echo '```bash' >> $GITHUB_STEP_SUMMARY
+        echo "# 健康检查" >> $GITHUB_STEP_SUMMARY
+        echo "curl $SERVICE_URL/" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "# QR码检测测试" >> $GITHUB_STEP_SUMMARY
+        echo "curl -X POST -F \"image=@your-qr-image.jpg\" \\" >> $GITHUB_STEP_SUMMARY
+        echo "     \"$SERVICE_URL/detect\"" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
